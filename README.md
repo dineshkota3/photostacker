@@ -1,9 +1,7 @@
 # Photo Stacker
 
 A local web app that scans a folder of photos and **stacks visually similar
-ones together** — same scene from different angles stacks; different scenes
-stay separate; photos with people never stack with photos without people.
-**Fully local**: all analysis runs in your browser, photos never leave your
+ones together**. **Fully local**: all analysis runs in your browser, photos never leave your
 machine, and nothing is ever written back to your folders.
 
 ## How matching works
