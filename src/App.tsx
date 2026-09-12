@@ -6,6 +6,7 @@ import Compare from "./components/Compare";
 import { analyzePhoto, PhotoAnalysis } from "./image/analyze";
 import { prepareImageFile } from "./image/decode";
 import { buildStacks, PhotoRecord, Stack } from "./image/cluster";
+import JSZip from "jszip";
 
 interface ScanState {
   status: "idle" | "scanning" | "done" | "error";
@@ -51,6 +52,27 @@ export default function App() {
       await new Promise((r) => setTimeout(r, 350));
       URL.revokeObjectURL(url);
     }
+    setSelected(new Set());
+    setSelectMode(false);
+  };
+
+  /** Same originals, bundled into a single ZIP (stored, not re-encoded). */
+  const downloadSelectedAsZip = async () => {
+    const picked = photos.filter((p) => selected.has(p.id) && p.file);
+    if (picked.length === 0) return;
+    const zip = new JSZip();
+    // STORE: JPEG/HEIC are already compressed; re-compressing wastes time
+    // and changes nothing about quality (file contents are copied verbatim).
+    for (const rec of picked) zip.file(rec.name, rec.file!);
+    const blob = await zip.generateAsync({ type: "blob", compression: "STORE" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "photo-stacker-selection.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
     setSelected(new Set());
     setSelectMode(false);
   };
@@ -201,7 +223,13 @@ export default function App() {
                   disabled={selected.size === 0}
                   onClick={downloadSelected}
                 >
-                  Download {selected.size} original{selected.size !== 1 ? "s" : ""}
+                  Download {selected.size} individually
+                </button>
+                <button
+                  disabled={selected.size === 0}
+                  onClick={downloadSelectedAsZip}
+                >
+                  Download {selected.size} as ZIP
                 </button>
                 <button
                   className="secondary"
