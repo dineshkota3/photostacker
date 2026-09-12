@@ -204,21 +204,35 @@ export default function App() {
           {scan.status === "done" && photos.length > 0 && (
             <>
           {scan.message && <div className="error" style={{ marginBottom: 14 }}>{scan.message}</div>}
-          <div className="row panel" style={{ padding: 12, marginBottom: 14, gap: 12 }}>
+          <div className="panel" style={{ padding: 12, marginBottom: 14 }}>
+          <div className="muted" style={{ marginBottom: 8 }}>
+            {selected.size} selected — open a stack to pick photos. Note:
+            unique photos (no duplicates) are selected automatically.
+          </div>
+          <div className="row" style={{ gap: 12 }}>
             <button
               className="secondary"
               onClick={() => {
-                setSelectMode((s) => !s);
-                setSelected(new Set());
+                if (selectMode) {
+                  setSelectMode(false);
+                  setSelected(new Set());
+                } else {
+                  setSelectMode(true);
+                  // Unique photos have no duplicates — pre-select them all.
+                  setSelected(
+                    new Set(
+                      stacks
+                        .filter((s) => s.members.length === 1)
+                        .flatMap((s) => s.members.map((m) => m.id))
+                    )
+                  );
+                }
               }}
             >
               {selectMode ? "Done selecting" : "Select photos to download"}
             </button>
             {selectMode && (
               <>
-                <span className="muted" style={{ flex: 0, padding: "8px 0" }}>
-                  {selected.size} selected — open a stack to pick photos
-                </span>
                 <button
                   disabled={selected.size === 0}
                   onClick={downloadSelected}
@@ -242,6 +256,7 @@ export default function App() {
                 </button>
               </>
             )}
+          </div>
           </div>
               <div className="panel">
                 <label htmlFor="lvl">
