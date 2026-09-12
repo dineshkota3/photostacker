@@ -52,9 +52,9 @@ export default function LocalFolderInput({ onScan, loading, disabled }: Props) {
         )}
       </div>
       <p className="muted" style={{ marginTop: 10 }}>
-        Photos never leave your machine — they're read from disk into browser
-        memory, hashed locally, and displayed. Read-only: nothing is written back
-        to the folder.
+        100% local and read-only. Pick the photos you like from each stack —
+        keep one or a few instead of all the similar ones, then download the
+        originals at full quality.
       </p>
       {/* webkitdirectory isn't in React's typings; set it via ref */}
       <input

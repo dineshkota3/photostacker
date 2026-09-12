@@ -12,6 +12,8 @@ export interface PhotoRecord {
   clip?: Float32Array;
   /** Number of people detected (undefined if detection failed/unavailable). */
   persons?: number;
+  /** The original local file — used for byte-exact downloads (no re-encode). */
+  file?: File;
 }
 
 export interface Stack {

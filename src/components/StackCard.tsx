@@ -3,6 +3,8 @@ import { Stack } from "../image/cluster";
 interface Props {
   stack: Stack;
   onOpen: () => void;
+  /** Number of this stack's members selected for download (select mode). */
+  selectedCount?: number;
 }
 
 function fmtSize(bytes?: number): string {
@@ -12,14 +14,28 @@ function fmtSize(bytes?: number): string {
   return `${(bytes / 1024).toFixed(0)} KB`;
 }
 
-export default function StackCard({ stack, onOpen }: Props) {
+export default function StackCard({ stack, onOpen, selectedCount = 0 }: Props) {
   const cover = stack.members[0];
   const count = stack.members.length;
   return (
-    <div className="card" onClick={onOpen} style={{ cursor: "pointer" }}>
+    <div
+      className={"card" + (selectedCount > 0 ? " selected" : "")}
+      onClick={onOpen}
+      style={{ cursor: "pointer" }}
+      title="Open to select individual photos"
+    >
       <img src={cover.thumbUrl} alt={cover.name} loading="lazy" />
       <span className="count">{count}</span>
-      {cover.persons !== undefined && (
+      {selectedCount > 0 && (
+        <span
+          className="count"
+          style={{ left: 8, right: "auto", background: "var(--accent)" }}
+          title="Selected for download"
+        >
+          ✓ {selectedCount}/{count}
+        </span>
+      )}
+      {cover.persons !== undefined && selectedCount === 0 && (
         <span
           className="count"
           style={{ left: 8, right: "auto" }}

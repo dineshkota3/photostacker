@@ -306,6 +306,32 @@ button.secondary {
   font-weight: 600;
 }
 
+.card.selected {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(47, 128, 237, 0.35);
+}
+
+.card .check {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.65);
+  border: 2px solid #fff;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.card .check.on {
+  background: var(--accent);
+}
+
 .solo {
   font-size: 14px;
   margin-top: 18px;

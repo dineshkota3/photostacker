@@ -1,18 +1,8 @@
 import { useCallback, useMemo, useState } from "react";
-import { useMsal, useIsAuthenticated } from "@azure/msal-react";
-import SignIn from "./components/SignIn";
-import FolderInput from "./components/FolderInput";
 import LocalFolderInput from "./components/LocalFolderInput";
 import StackCard from "./components/StackCard";
 import StackModal from "./components/StackModal";
 import Compare from "./components/Compare";
-import {
-  resolveShareUrl,
-  listChildren,
-  getThumbnailUrl,
-  filterImages,
-} from "./api/graph";
-import { loadImage } from "./image/phash";
 import { analyzePhoto, PhotoAnalysis } from "./image/analyze";
 import { prepareImageFile } from "./image/decode";
 import { buildStacks, PhotoRecord, Stack } from "./image/cluster";
@@ -25,94 +15,52 @@ interface ScanState {
 }
 
 export default function App() {
-  const { instance, accounts } = useMsal();
-  const isAuthenticated = useIsAuthenticated();
-  const account = accounts[0] || null;
-
   const [scan, setScan] = useState<ScanState>({ status: "idle" });
   const [photos, setPhotos] = useState<PhotoRecord[]>([]);
   const [level, setLevel] = useState(45);
   const [tab, setTab] = useState<"stack" | "compare">("stack");
   const [openStack, setOpenStack] = useState<Stack | null>(null);
+  const [selectMode, setSelectMode] = useState(false);
+  const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  const handleScan = useCallback(
-    async (shareUrl: string) => {
-      if (!account) return;
-      setScan({ status: "scanning", done: 0, total: 0, message: "Resolving link…" });
-      setPhotos([]);
-      try {
-        const { driveId, itemId } = await resolveShareUrl(
-          instance,
-          account,
-          shareUrl
-        );
-        setScan({ status: "scanning", message: "Listing photos…" });
-        const children = await listChildren(instance, account, driveId, itemId);
-        const images = filterImages(children);
-        if (images.length === 0) {
-          setScan({ status: "error", message: "No images found in that folder." });
-          return;
-        }
+  const toggleSelect = (id: string) => {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
-        const total = images.length;
-        let detectFailed = false;
-        const records: PhotoRecord[] = [];
-        for (let i = 0; i < total; i++) {
-          const item = images[i];
-          setScan({
-            status: "scanning",
-            done: i,
-            total,
-            message: `Loading thumbnails…`,
-          });
-          const thumbUrl = await getThumbnailUrl(
-            instance,
-            account,
-            driveId,
-            item.id
-          );
-          if (!thumbUrl) continue;
-          let analysis: PhotoAnalysis = {};
-          try {
-            const bitmap = await loadImage(thumbUrl);
-            analysis = await analyzePhoto(bitmap);
-            if (analysis.persons === undefined) detectFailed = true;
-            bitmap.close?.();
-          } catch {
-            analysis = {}; // undecodable; image becomes a singleton
-          }
-          records.push({
-            id: item.id,
-            name: item.name,
-            thumbUrl,
-            size: item.size,
-            modified: item.lastModifiedDateTime,
-            features: analysis.features,
-            clip: analysis.clip,
-            persons: analysis.persons,
-          });
-        }
-
-        setPhotos(records);
-        setScan({
-          status: "done",
-          done: total,
-          total,
-          message: detectFailed
-            ? "Person detection failed (model download?) — stacking by visual similarity only."
-            : undefined,
-        });
-      } catch (e: any) {
-        setScan({ status: "error", message: e?.message || String(e) });
-      }
-    },
-    [instance, account]
-  );
+  /**
+   * Download selected photos at original quality: the browser saved the
+   * original File objects, so these are the exact bytes from disk —
+   * HEIC downloads as HEIC, no conversion, no re-encoding.
+   */
+  const downloadSelected = async () => {
+    const picked = photos.filter((p) => selected.has(p.id) && p.file);
+    for (const rec of picked) {
+      const url = URL.createObjectURL(rec.file!);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = rec.name; // original filename, original bytes
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // Stagger so the browser doesn't block multi-file downloads
+      await new Promise((r) => setTimeout(r, 350));
+      URL.revokeObjectURL(url);
+    }
+    setSelected(new Set());
+    setSelectMode(false);
+  };
 
   /** Local-folder mode: no auth, files come straight from disk. */
   const handleLocalScan = useCallback(async (files: File[]) => {
     setScan({ status: "scanning", done: 0, total: files.length, message: "Reading local photos…" });
     setPhotos([]);
+    setSelected(new Set());
+    setSelectMode(false);
     let detectFailed = false;
     const records: PhotoRecord[] = [];
     for (let i = 0; i < files.length; i++) {
@@ -139,6 +87,7 @@ export default function App() {
         features: analysis.features,
         clip: analysis.clip,
         persons: analysis.persons,
+        file,
       });
     }
     setPhotos(records);
@@ -181,7 +130,6 @@ export default function App() {
             Compare two photos
           </button>
         </div>
-        <SignIn />
       </div>
 
       {tab === "compare" && (
@@ -210,10 +158,6 @@ export default function App() {
         loading={scan.status === "scanning"}
       />
 
-      {isAuthenticated && (
-        <FolderInput onScan={handleScan} loading={scan.status === "scanning"} />
-      )}
-
       <>
           {scan.status === "scanning" && (
             <div className="panel">
@@ -238,6 +182,39 @@ export default function App() {
           {scan.status === "done" && photos.length > 0 && (
             <>
           {scan.message && <div className="error" style={{ marginBottom: 14 }}>{scan.message}</div>}
+          <div className="row panel" style={{ padding: 12, marginBottom: 14, gap: 12 }}>
+            <button
+              className="secondary"
+              onClick={() => {
+                setSelectMode((s) => !s);
+                setSelected(new Set());
+              }}
+            >
+              {selectMode ? "Done selecting" : "Select photos to download"}
+            </button>
+            {selectMode && (
+              <>
+                <span className="muted" style={{ flex: 0, padding: "8px 0" }}>
+                  {selected.size} selected — open a stack to pick photos
+                </span>
+                <button
+                  disabled={selected.size === 0}
+                  onClick={downloadSelected}
+                >
+                  Download {selected.size} original{selected.size !== 1 ? "s" : ""}
+                </button>
+                <button
+                  className="secondary"
+                  disabled={photos.every((p) => selected.has(p.id))}
+                  onClick={() =>
+                    setSelected(new Set(photos.filter((p) => p.file).map((p) => p.id)))
+                  }
+                >
+                  Select all
+                </button>
+              </>
+            )}
+          </div>
               <div className="panel">
                 <label htmlFor="lvl">
                   Matching sensitivity — {level} (higher = stack more)
@@ -269,6 +246,11 @@ export default function App() {
                         key={s.id}
                         stack={s}
                         onOpen={() => setOpenStack(s)}
+                        selectedCount={
+                          selectMode
+                            ? s.members.filter((m) => selected.has(m.id)).length
+                            : 0
+                        }
                       />
                     ))}
                   </div>
@@ -284,6 +266,11 @@ export default function App() {
                         key={s.id}
                         stack={s}
                         onOpen={() => setOpenStack(s)}
+                        selectedCount={
+                          selectMode
+                            ? s.members.filter((m) => selected.has(m.id)).length
+                            : 0
+                        }
                       />
                     ))}
                   </div>
@@ -296,7 +283,27 @@ export default function App() {
       )}
 
       {openStack && (
-        <StackModal stack={openStack} onClose={() => setOpenStack(null)} />
+        <StackModal
+          stack={openStack}
+          onClose={() => setOpenStack(null)}
+          selectMode={selectMode}
+          isSelected={(id) => selected.has(id)}
+          onToggleMember={toggleSelect}
+          onSelectAll={() =>
+            setSelected((prev) => {
+              const next = new Set(prev);
+              openStack.members.forEach((m) => next.add(m.id));
+              return next;
+            })
+          }
+          onClearAll={() =>
+            setSelected((prev) => {
+              const next = new Set(prev);
+              openStack.members.forEach((m) => next.delete(m.id));
+              return next;
+            })
+          }
+        />
       )}
     </div>
   );
