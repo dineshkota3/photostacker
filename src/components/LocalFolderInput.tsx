@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 interface Props {
-  onScan: (files: File[]) => void;
+  onScan: (files: File[], skippedCount?: number) => void;
   loading: boolean;
   disabled?: boolean;
 }
@@ -27,12 +27,13 @@ export default function LocalFolderInput({ onScan, loading, disabled }: Props) {
   }, []);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = Array.from(e.target.files || []).filter(isImageFile);
+    const all = Array.from(e.target.files || []);
+    const files = all.filter(isImageFile);
     if (files.length === 0) return;
-    setFolderName(
-      (e.target.files || [])[0]?.webkitRelativePath?.split("/")[0] || "folder"
-    );
-    onScan(files);
+    setFolderName(all[0]?.webkitRelativePath?.split("/")[0] || "folder");
+    // The browser's picker counts every file (videos, etc.) — report how
+    // many non-photos were skipped so the numbers make sense to the user.
+    onScan(files, all.length - files.length);
   };
 
   return (

@@ -78,7 +78,7 @@ export default function App() {
   };
 
   /** Local-folder mode: no auth, files come straight from disk. */
-  const handleLocalScan = useCallback(async (files: File[]) => {
+  const handleLocalScan = useCallback(async (files: File[], skippedCount = 0) => {
     setScan({ status: "scanning", done: 0, total: files.length, message: "Reading local photos…" });
     setPhotos([]);
     setSelected(new Set());
@@ -117,9 +117,18 @@ export default function App() {
       status: "done",
       done: files.length,
       total: files.length,
-      message: detectFailed
-        ? "Person detection failed (model download?) — stacking by visual similarity only."
-        : undefined,
+      message: [
+        skippedCount > 0
+          ? `${files.length} photos scanned — ${skippedCount} non-photo file${
+              skippedCount !== 1 ? "s" : ""
+            } (videos etc.) skipped.`
+          : undefined,
+        detectFailed
+          ? "Person detection failed (model download?) — stacking by visual similarity only."
+          : undefined,
+      ]
+        .filter(Boolean)
+        .join(" ") || undefined,
     });
   }, []);
 
@@ -203,7 +212,7 @@ export default function App() {
 
           {scan.status === "done" && photos.length > 0 && (
             <>
-          {scan.message && <div className="error" style={{ marginBottom: 14 }}>{scan.message}</div>}
+          {scan.message && <div className="note" style={{ marginBottom: 14 }}>{scan.message}</div>}
           <div className="panel" style={{ padding: 12, marginBottom: 14 }}>
           <div className="muted" style={{ marginBottom: 8 }}>
             {selected.size} selected — open a stack to pick photos. Note:
