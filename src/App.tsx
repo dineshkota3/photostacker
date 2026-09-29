@@ -1,10 +1,11 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import LocalFolderInput from "./components/LocalFolderInput";
 import StackCard from "./components/StackCard";
 import StackModal from "./components/StackModal";
 import Compare from "./components/Compare";
 import { analyzePhoto, PhotoAnalysis } from "./image/analyze";
 import { prepareImageFile } from "./image/decode";
+import { filesFromDrop } from "./image/drop";
 import { buildStacks, PhotoRecord, Stack } from "./image/cluster";
 import JSZip from "jszip";
 
@@ -23,6 +24,31 @@ export default function App() {
   const [openStack, setOpenStack] = useState<Stack | null>(null);
   const [selectMode, setSelectMode] = useState(false);
   const [selected, setSelected] = useState<Set<string>>(new Set());
+  const [dropHint, setDropHint] = useState(false);
+  const [dropping, setDropping] = useState(false);
+  const [trashResult, setTrashResult] = useState<string | null>(null);
+
+  // Desktop bridge (Electron) — enables Move to Trash. Absent in browsers.
+  const desktop = typeof window !== "undefined" ? (window as any).photostackerDesktop : null;
+
+  /** Desktop only: move selected photos to the macOS Trash (recoverable). */
+  const trashSelected = async () => {
+    if (!desktop) return;
+    const picked = photos.filter(
+      (p) => selected.has(p.id) && (p.file as any)?.path
+    );
+    if (picked.length === 0) return;
+    const res = await desktop.trashFiles(picked.map((p) => (p.file as any).path));
+    if (res.cancelled) return;
+    const gone = new Set(picked.map((p) => p.id));
+    setPhotos((prev) => prev.filter((p) => !gone.has(p.id)));
+    setSelected(new Set());
+    setTrashResult(
+      res.ok
+        ? `Moved ${picked.length} photo${picked.length !== 1 ? "s" : ""} to the Trash.`
+        : `Moved ${picked.length - (res.failed?.length || 0)} — some files could not be trashed.`
+    );
+  };
 
   const toggleSelect = (id: string) => {
     setSelected((prev) => {
@@ -132,6 +158,36 @@ export default function App() {
     });
   }, []);
 
+  // Drag & drop a folder anywhere on the page to scan it.
+  useEffect(() => {
+    const onOver = (e: DragEvent) => {
+      e.preventDefault();
+      if (e.dataTransfer?.types.includes("Files")) setDropHint(true);
+    };
+    const onLeave = (e: DragEvent) => {
+      if (e.relatedTarget === null) setDropHint(false);
+    };
+    const onDrop = async (e: DragEvent) => {
+      e.preventDefault();
+      setDropHint(false);
+      if (dropping) return;
+      const res = await filesFromDrop(e);
+      if (!res) return;
+      setDropping(true);
+      await handleLocalScan(res.files, res.total - res.files.length);
+      setDropping(false);
+    };
+    window.addEventListener("dragover", onOver);
+    window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onDrop);
+    return () => {
+      window.removeEventListener("dragover", onOver);
+      window.removeEventListener("dragleave", onLeave);
+      window.removeEventListener("drop", onDrop);
+    };
+  }, [dropping, handleLocalScan]);
+
+
   const stacks = useMemo(
     () => buildStacks(photos, { level }),
     [photos, level]
@@ -213,6 +269,17 @@ export default function App() {
           {scan.status === "done" && photos.length > 0 && (
             <>
           {scan.message && <div className="note" style={{ marginBottom: 14 }}>{scan.message}</div>}
+          {trashResult && (
+            <div className="note" style={{ marginBottom: 14 }}>
+              {trashResult}{" "}
+              <button className="secondary" style={{ padding: "2px 10px" }} onClick={() => setTrashResult(null)}>
+                dismiss
+              </button>
+            </div>
+          )}
+          {dropHint && (
+            <div className="note" style={{ marginBottom: 14 }}>Drop the folder to scan it…</div>
+          )}
           <div className="panel" style={{ padding: 12, marginBottom: 14 }}>
           <div className="muted" style={{ marginBottom: 8 }}>
             {selected.size} selected — open a stack to pick photos. Note:
@@ -254,6 +321,19 @@ export default function App() {
                 >
                   Download {selected.size} as ZIP
                 </button>
+                {desktop && (
+                  <button
+                    className="danger"
+                    disabled={
+                      selected.size === 0 ||
+                      !photos.some((p) => selected.has(p.id) && (p.file as any)?.path)
+                    }
+                    onClick={trashSelected}
+                    title="Desktop app only — moves files to the macOS Trash"
+                  >
+                    Move {selected.size} to Trash 🗑
+                  </button>
+                )}
                 <button
                   className="secondary"
                   disabled={photos.every((p) => selected.has(p.id))}
