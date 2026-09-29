@@ -34,11 +34,12 @@ export default function App() {
   /** Desktop only: move selected photos to the macOS Trash (recoverable). */
   const trashSelected = async () => {
     if (!desktop) return;
-    const picked = photos.filter(
-      (p) => selected.has(p.id) && (p.file as any)?.path
-    );
+    const picked = photos.filter((p) => selected.has(p.id) && p.file);
     if (picked.length === 0) return;
-    const res = await desktop.trashFiles(picked.map((p) => (p.file as any).path));
+    // Electron ≥32: File.path was removed — resolve paths via the preload bridge.
+    const paths: string[] = await desktop.getPaths(picked.map((p) => p.file!));
+    if (paths.some((p) => !p)) return;
+    const res = await desktop.trashFiles(paths);
     if (res.cancelled) return;
     const gone = new Set(picked.map((p) => p.id));
     setPhotos((prev) => prev.filter((p) => !gone.has(p.id)));
@@ -324,10 +325,7 @@ export default function App() {
                 {desktop && (
                   <button
                     className="danger"
-                    disabled={
-                      selected.size === 0 ||
-                      !photos.some((p) => selected.has(p.id) && (p.file as any)?.path)
-                    }
+                    disabled={selected.size === 0}
                     onClick={trashSelected}
                     title="Desktop app only — moves files to the macOS Trash"
                   >
